@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kra Long Canvas</title>
+<style>
+  html, body { margin:0; padding:0; min-height:100%; }
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  * { box-sizing: border-box; }
+  #stage {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #canvasWrap {
+    position: relative;
+    width: 100%;
+    flex: 1 1 0%;
+    height: 100vh;
+    min-height: 560px;
+    touch-action: pan-y;
+  }
+  #bg { position:absolute; inset:0; }
+  canvas#stageCanvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    cursor: grab;
+    background: transparent;
+  }
+  canvas#stageCanvas:active { cursor: grabbing; }
+  .fade-bottom {
+    position:absolute; left:0; right:0; bottom:0; height:28%;
+    background: linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,.12), transparent);
+    pointer-events:none;
+  }
+  .fade-left, .fade-right {
+    position:absolute; top:0; bottom:0; width:10%;
+    pointer-events:none;
+  }
+  .fade-left { left:0; background: linear-gradient(to right, rgba(0,0,0,.2), transparent); }
+  .fade-right { right:0; background: linear-gradient(to left, rgba(0,0,0,.2), transparent); }
+
+  .counter-row {
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; align-items:flex-end; justify-content:flex-end;
+    padding: 3rem 1rem 1.25rem;
+    pointer-events:none;
+  }
+  @media (min-width: 768px) { .counter-row { padding: 3rem 2rem 1.25rem; } }
+
+  .counter-pill {
+    pointer-events:auto;
+    display:flex; align-items:center; gap:.375rem;
+    padding: 0 .75rem; height:28px;
+    border-radius:9999px;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: rgba(255,255,255,.8);
+    font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    border: 1px solid rgba(255,255,255,.1);
+  }
+  .dot {
+    width:6px; height:6px; border-radius:9999px;
+    background: rgba(255,255,255,.8);
+    animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite;
+  }
+  @keyframes pulse { 50% { opacity:.5; } }
+
+  #emptyMsg {
+    position:absolute; inset:0;
+    display:none;
+    align-items:center; justify-content:center;
+    text-align:center;
+    padding: 2rem;
+    color: rgba(255,255,255,.85);
+    font-size: 13px;
+    letter-spacing:.04em;
+    pointer-events:none;
+  }
+  #emptyMsg .box {
+    background: rgba(0,0,0,.3);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    max-width: 360px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="canvasWrap">
+      <div id="bg"></div>
+      <canvas id="stageCanvas"></canvas>
+      <div class="fade-bottom"></div>
+      <div class="fade-left"></div>
+      <div class="fade-right"></div>
+      <div class="counter-row">
+        <div class="counter-pill">
+          <span class="dot"></span>
+          <span id="counterText">0 / 0</span>
+        </div>
+      </div>
+      <div id="emptyMsg"><div class="box">No images found in the <strong>images</strong> folder.<br>Add some image files there and reload.<br><br>If you opened this file directly (double-click), serve the folder with a local server instead, e.g.<br><code>python3 -m http.server</code></div></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var BG_COLOR = "#9e8859";
+  var MASK_OPACITY = 0.85;
+  var TEXTURE_DATA_URI = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepSKOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAABxjcHJ0AAABDAAAAAx3dHB0AAABGAAAABRyWFlaAAABLAAAABRnWFlaAAABQAAAABRiWFlaAAABVAAAABRyVFJDAAABaAAAAGBnVFJDAAABaAAAAGBiVFJDAAABaAAAAGBkZXNjAAAAAAAAAAV1UkdCAAAAAAAAAAAAAAAAdGV4dAAAAABDQzAAWFlaIAAAAAAAAPNUAAEAAAABFslYWVogAAAAAAAAb6AAADjyAAADj1hZWiAAAAAAAABilgAAt4kAABjaWFlaIAAAAAAAACSgAAAPhQAAtsRjdXJ2AAAAAAAAACoAAAB8APgBnAJ1A4MEyQZOCBIKGAxiDvQRzxT2GGocLiBDJKwpai5+M+s5sz/WRldNNlR2XBdkHWyGdVZ+jYgskjacq6eMstu+mcrH12Xkd/H5////2wBDAAkGBwgHBgkICAgKCgkLDhcPDg0NDhwUFREXIh4jIyEeICAlKjUtJScyKCAgLj8vMjc5PDw8JC1CRkE6RjU7PDn/2wBDAQoKCg4MDhsPDxs5JiAmOTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTn/wAARCAAUABQDASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMEB//EACgQAAICAgEDAgYDAAAAAAAAAAECAxEEBRIABhMiQRUhMTJRcSMlof/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwDo080DYvcIHcsxJlA+SknHJPEIgWmbkwMX8ZUkoVWpQ7nXFPjvu9Vw7iebliWkIKFcoEWshKgLbBWYULPjJTiqyhmRHtHxN8nwfXv5mqJDTDKUoFJdTQc8QBTFLPoJVVEra/7JtxgSSa/CEQxnE04k5PE54lkRiAStqvt6qJPAoqyBPtWSKTXSGHcPtV87nzPVi6IH6IIcH7SHBQKhRQ6voRmrhSDOwsXDlM8jCPHa1ILFi37JJN/VvuIQsUV0EJe28KSDawmXK47Nucty8qNewNgj8hgwK0htFVBddLirscPOEmUZcSAwRhp2YFT7sSSSfzZ9R4luRRCrp0FNPqoNRivj47zOjStKTLIXNsb9/wDT9WNsxZmZi6dOg//Z";
+
+  var bg = document.getElementById("bg");
+  bg.style.background = BG_COLOR;
+  document.getElementById("stage").style.background = BG_COLOR;
+
+  var wrap = document.getElementById("canvasWrap");
+  var canvas = document.getElementById("stageCanvas");
+  var ctx = canvas.getContext("2d", { alpha: true });
+  var counterText = document.getElementById("counterText");
+  var emptyMsg = document.getElementById("emptyMsg");
+
+  var images = [];      // {src}
+  var imgEls = [];       // HTMLImageElement per image
+  var maskCanvas = null;
+
+  var canvasW = 1200, canvasH = 800;
+  var itemWidth = 740;
+  var dragging = false;
+  var dragStartX = 0;
+  var dragStartTarget = 0;
+  var renderPos = -420;   // animated/rendered position (eases toward targetPos)
+  var targetPos = -420;   // destination position (set by drag / keyboard nav, snapped on release)
+  var centerOffset = 0;   // alignment offset
+  var hasPositioned = false;
+  var currentIndex = 0;
+  var rafId = 0;
+
+  function findImageEls() {
+    imgEls = images.map(function (it) {
+      var im = new Image();
+      im.decoding = "async";
+      im.src = it.src;
+      return im;
+    });
+  }
+
+  function buildMask() {
+    var tex = new Image();
+    tex.src = TEXTURE_DATA_URI;
+    tex.onload = function () {
+      var g = Math.max(8, Math.round(20 * MASK_OPACITY));
+      var tmp = document.createElement("canvas");
+      tmp.width = g; tmp.height = g;
+      var tctx = tmp.getContext("2d");
+      tctx.drawImage(tex, 0, 0, g, g);
+      var data = tctx.getImageData(0, 0, g, g);
+      for (var i = 0; i < data.data.length; i += 4) {
+        var r = data.data[i], gg = data.data[i + 1], b = data.data[i + 2];
+        var lum = 0.299 * r + 0.587 * gg + 0.114 * b;
+        if (lum < 140) {
+          data.data[i] = 0; data.data[i + 1] = 0; data.data[i + 2] = 0; data.data[i + 3] = 255;
+        } else {
+          data.data[i + 3] = 0;
+        }
+      }
+      tctx.clearRect(0, 0, g, g);
+      tctx.putImageData(data, 0, 0);
+      maskCanvas = tmp;
+    };
+  }
+
+  function resize() {
+    var rect = wrap.getBoundingClientRect();
+    var w = Math.max(10, Math.round(rect.width));
+    var h = Math.max(10, Math.round(rect.height));
+    canvasW = w; canvasH = h;
+    canvas.width = w; canvas.height = h;
+    var narrow = w < 768;
+    itemWidth = narrow ? 520 : 740;
+    var half = w * 0.5;
+    var offset = itemWidth * 0.5 - half;
+    centerOffset = offset;
+    if (!hasPositioned) {
+      hasPositioned = true;
+      targetPos = offset;
+      renderPos = offset;
+    }
+  }
+
+  function onPointerDown(e) {
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartTarget = targetPos;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  function onPointerMove(e) {
+    if (!dragging) return;
+    var dx = dragStartX - e.clientX;
+    targetPos = dragStartTarget + dx;
+    renderPos = targetPos;
+  }
+  function onPointerUp(e) {
+    if (!dragging) return;
+    dragging = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
+    var w = itemWidth, base = centerOffset;
+    var steps = (targetPos - base) / w;
+    var rounded = Math.round(steps);
+    targetPos = base + rounded * w;
+  }
+
+  function next() {
+    targetPos += itemWidth;
+  }
+  function prev() {
+    targetPos -= itemWidth;
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (!images.length) return;
+    if (e.key === "ArrowRight") { e.preventDefault(); next(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+  });
+
+  var lastIndex = -1;
+  var maskScrollRef = 0;
+
+  function frame() {
+    var w = itemWidth, cw = canvasW, ch = canvasH;
+    var total = images.length * w;
+
+    if (!dragging) {
+      var diff = targetPos - renderPos;
+      if (Math.abs(diff) > 0.1) renderPos += diff * 0.14;
+      else renderPos = targetPos;
+    }
+
+    if (total > 0 && Math.abs(renderPos) > total * 3) {
+      var wraps = Math.round(renderPos / total);
+      renderPos -= wraps * total;
+      targetPos -= wraps * total;
+    }
+
+    if (total > 0 && images.length) {
+      var idxF = (renderPos - centerOffset) / w;
+      var idx = Math.round(idxF) % images.length;
+      if (idx < 0) idx += images.length;
+      if (idx !== lastIndex) {
+        lastIndex = idx;
+        currentIndex = idx;
+        counterText.textContent = (idx + 1) + " / " + images.length;
+      }
+    }
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cw, ch);
+
+    var screenCenter = cw * 0.5;
+    for (var i = 0; i < images.length; i++) {
+      var x = i * w + w * 0.5 - renderPos;
+      if (total > 0) {
+        while (x < -900) x += total;
+        while (x > cw + 900) x -= total;
+      }
+      if (x < -700 || x > cw + 700) continue;
+      var dist = Math.abs(x - screenCenter);
+      var scale = 1.4 - Math.min(dist / (cw * 0.48), 1) * 0.7;
+      var im = imgEls[i];
+      if (!im || !im.complete || im.naturalWidth === 0) continue;
+      var baseW = cw < 768 ? 280 : 360;
+      var aspect = (im.naturalHeight / im.naturalWidth) || 1;
+      var dw = baseW * scale;
+      var dh = baseW * aspect * scale;
+      ctx.drawImage(im, x - dw / 2, ch * 0.5 - dh / 2, dw, dh);
+    }
+
+    if (maskCanvas) {
+      var mw = maskCanvas.width;
+      var off = renderPos % mw;
+      if (off < 0) off += mw;
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.translate(-off, 0);
+      var pattern = ctx.createPattern(maskCanvas, "repeat");
+      if (pattern) {
+        ctx.fillStyle = pattern;
+        ctx.fillRect(0, 0, cw + mw * 2, ch);
+      }
+      ctx.restore();
+    }
+
+    try {
+      var copy = document.createElement("canvas");
+      copy.width = cw; copy.height = ch;
+      copy.getContext("2d").drawImage(canvas, 0, 0);
+      ctx.save();
+      ctx.filter = "blur(14px)";
+      ctx.globalCompositeOperation = "darken";
+      ctx.globalAlpha = 0.51;
+      ctx.drawImage(copy, 0, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = 0.38;
+      ctx.globalCompositeOperation = "screen";
+      ctx.drawImage(copy, -3, 0);
+      ctx.drawImage(copy, 3, 0);
+      ctx.restore();
+    } catch (err) {}
+
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function startLoop() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(frame);
+  }
+
+  // ---- image discovery from the /images folder ----
+
+  var IMG_EXT = /\.(jpe?g|png|gif|webp|avif|bmp)$/i;
+
+  function tryManifest() {
+    return fetch("images/manifest.json", { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (list) { return Array.isArray(list) ? list.filter(function (f) { return IMG_EXT.test(f); }) : []; })
+      .catch(function () { return []; });
+  }
+
+  function tryDirectoryListing() {
+    return fetch("images/", { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.text() : ""; })
+      .then(function (html) {
+        if (!html) return [];
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        var anchors = Array.prototype.slice.call(doc.querySelectorAll("a[href]"));
+        var files = anchors
+          .map(function (a) { try { return decodeURIComponent(a.getAttribute("href")); } catch (e) { return a.getAttribute("href"); } })
+          .filter(function (href) { return href && IMG_EXT.test(href) && href.indexOf("/") === -1; });
+        return files;
+      })
+      .catch(function () { return []; });
+  }
+
+  function tryGithubApi() {
+    var host = location.hostname;
+    if (!/\.github\.io$/i.test(host)) return Promise.resolve([]);
+    var owner = host.split(".")[0];
+    var parts = location.pathname.split("/").filter(Boolean);
+    var repo = parts.length > 0 ? parts[0] : host;
+    var api = "https://api.github.com/repos/" + owner + "/" + repo + "/contents/images";
+    return fetch(api, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } })
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (list) {
+        if (!Array.isArray(list)) return [];
+        return list
+          .filter(function (item) { return item.type === "file" && IMG_EXT.test(item.name); })
+          .map(function (item) { return item.name; });
+      })
+      .catch(function () { return []; });
+  }
+
+  function init(fileList) {
+    var unique = Array.from(new Set(fileList));
+    images = unique.map(function (name) { return { src: "images/" + name }; });
+
+    if (!images.length) {
+      emptyMsg.style.display = "flex";
+      counterText.textContent = "0 / 0";
+      return;
+    }
+    emptyMsg.style.display = "none";
+    currentIndex = Math.min(2, images.length - 1);
+    findImageEls();
+    resize();
+    startLoop();
+  }
+
+  buildMask();
+
+  Promise.all([tryManifest(), tryDirectoryListing(), tryGithubApi()]).then(function (results) {
+    var combined = results[0].concat(results[1]).concat(results[2]);
+    init(combined);
+  });
+
+  var ro = new ResizeObserver(function () { resize(); });
+  ro.observe(wrap);
+
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+})();
+</script>
+</body>
+</html>
