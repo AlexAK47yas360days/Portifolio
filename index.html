@@ -97,6 +97,83 @@
     max-width: 360px;
     line-height: 1.5;
   }
+
+  #settingsToggle {
+    position: absolute; top: 14px; right: 14px;
+    width: 36px; height: 36px;
+    border-radius: 9999px;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.15);
+    color: rgba(255,255,255,.85);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    z-index: 20;
+    font-size: 16px;
+  }
+  #settingsPanel {
+    position: absolute; top: 58px; right: 14px;
+    width: 240px;
+    background: rgba(15,15,15,.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 14px;
+    padding: 14px 16px 16px;
+    color: rgba(255,255,255,.9);
+    font-size: 11px;
+    letter-spacing: .03em;
+    z-index: 20;
+    display: none;
+  }
+  #settingsPanel.open { display: block; }
+  #settingsPanel label {
+    display: block;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: .08em;
+    color: rgba(255,255,255,.6);
+    margin: 10px 0 4px;
+  }
+  #settingsPanel label:first-child { margin-top: 0; }
+  #settingsPanel .val {
+    float: right;
+    color: rgba(255,255,255,.9);
+    font-variant-numeric: tabular-nums;
+  }
+  #settingsPanel input[type="range"] {
+    width: 100%;
+    accent-color: #e8b64a;
+  }
+  #exportBtn {
+    margin-top: 16px;
+    width: 100%;
+    height: 32px;
+    border: none;
+    border-radius: 9999px;
+    background: #e8b64a;
+    color: #1a1305;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    cursor: pointer;
+  }
+  #exportBtn:active { transform: scale(.98); }
+  #resetBtn {
+    margin-top: 8px;
+    width: 100%;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 9999px;
+    background: transparent;
+    color: rgba(255,255,255,.75);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -114,6 +191,21 @@
         </div>
       </div>
       <div id="emptyMsg"><div class="box">No images found in the <strong>images</strong> folder.<br>Add some image files there and reload.<br><br>If you opened this file directly (double-click), serve the folder with a local server instead, e.g.<br><code>python3 -m http.server</code></div></div>
+
+      <button id="settingsToggle" title="Effect settings">&#9881;</button>
+      <div id="settingsPanel">
+        <label>Bloom <span class="val" id="bloomVal">0.51</span></label>
+        <input type="range" id="bloomSlider" min="0" max="1" step="0.01" value="0.51">
+
+        <label>Chromatic aberration <span class="val" id="abVal">3</span></label>
+        <input type="range" id="abSlider" min="0" max="10" step="0.5" value="3">
+
+        <label>Erase pattern <span class="val" id="eraseVal">1.00</span></label>
+        <input type="range" id="eraseSlider" min="0" max="1" step="0.01" value="1">
+
+        <button id="exportBtn">Export HTML</button>
+        <button id="resetBtn">Reset to defaults</button>
+      </div>
     </div>
   </div>
 
@@ -123,6 +215,11 @@
 
   var BG_COLOR = "#9e8859";
   var MASK_OPACITY = 0.85;
+  var SETTINGS = /*SETTINGS_START*/{
+    "bloomAlpha": 0.51,
+    "aberrationOffset": 3,
+    "eraseAlpha": 1
+  }/*SETTINGS_END*/;
   var TEXTURE_DATA_URI = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepSKOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAABxjcHJ0AAABDAAAAAx3dHB0AAABGAAAABRyWFlaAAABLAAAABRnWFlaAAABQAAAABRiWFlaAAABVAAAABRyVFJDAAABaAAAAGBnVFJDAAABaAAAAGBiVFJDAAABaAAAAGBkZXNjAAAAAAAAAAV1UkdCAAAAAAAAAAAAAAAAdGV4dAAAAABDQzAAWFlaIAAAAAAAAPNUAAEAAAABFslYWVogAAAAAAAAb6AAADjyAAADj1hZWiAAAAAAAABilgAAt4kAABjaWFlaIAAAAAAAACSgAAAPhQAAtsRjdXJ2AAAAAAAAACoAAAB8APgBnAJ1A4MEyQZOCBIKGAxiDvQRzxT2GGocLiBDJKwpai5+M+s5sz/WRldNNlR2XBdkHWyGdVZ+jYgskjacq6eMstu+mcrH12Xkd/H5////2wBDAAkGBwgHBgkICAgKCgkLDhcPDg0NDhwUFREXIh4jIyEeICAlKjUtJScyKCAgLj8vMjc5PDw8JC1CRkE6RjU7PDn/2wBDAQoKCg4MDhsPDxs5JiAmOTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTn/wAARCAAUABQDASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMEB//EACgQAAICAgEDAgYDAAAAAAAAAAECAxEEBRIABhMiQRUhMTJRcSMlof/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwDo080DYvcIHcsxJlA+SknHJPEIgWmbkwMX8ZUkoVWpQ7nXFPjvu9Vw7iebliWkIKFcoEWshKgLbBWYULPjJTiqyhmRHtHxN8nwfXv5mqJDTDKUoFJdTQc8QBTFLPoJVVEra/7JtxgSSa/CEQxnE04k5PE54lkRiAStqvt6qJPAoqyBPtWSKTXSGHcPtV87nzPVi6IH6IIcH7SHBQKhRQ6voRmrhSDOwsXDlM8jCPHa1ILFi37JJN/VvuIQsUV0EJe28KSDawmXK47Nucty8qNewNgj8hgwK0htFVBddLirscPOEmUZcSAwRhp2YFT7sSSSfzZ9R4luRRCrp0FNPqoNRivj47zOjStKTLIXNsb9/wDT9WNsxZmZi6dOg//Z";
 
   var bg = document.getElementById("bg");
@@ -297,6 +394,7 @@
       if (off < 0) off += mw;
       ctx.save();
       ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = SETTINGS.eraseAlpha;
       ctx.translate(-off, 0);
       var pattern = ctx.createPattern(maskCanvas, "repeat");
       if (pattern) {
@@ -313,14 +411,15 @@
       ctx.save();
       ctx.filter = "blur(14px)";
       ctx.globalCompositeOperation = "darken";
-      ctx.globalAlpha = 0.51;
+      ctx.globalAlpha = SETTINGS.bloomAlpha;
       ctx.drawImage(copy, 0, 0);
       ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.38;
       ctx.globalCompositeOperation = "screen";
-      ctx.drawImage(copy, -3, 0);
-      ctx.drawImage(copy, 3, 0);
+      var abOffset = SETTINGS.aberrationOffset;
+      ctx.drawImage(copy, -abOffset, 0);
+      ctx.drawImage(copy, abOffset, 0);
       ctx.restore();
     } catch (err) {}
 
@@ -406,6 +505,82 @@
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
+
+  // ---- settings panel (bloom / chromatic aberration / erase pattern) ----
+
+  var DEFAULT_SETTINGS = { bloomAlpha: 0.51, aberrationOffset: 3, eraseAlpha: 1 };
+
+  var toggleBtn = document.getElementById("settingsToggle");
+  var panel = document.getElementById("settingsPanel");
+  var bloomSlider = document.getElementById("bloomSlider");
+  var abSlider = document.getElementById("abSlider");
+  var eraseSlider = document.getElementById("eraseSlider");
+  var bloomVal = document.getElementById("bloomVal");
+  var abVal = document.getElementById("abVal");
+  var eraseVal = document.getElementById("eraseVal");
+  var exportBtn = document.getElementById("exportBtn");
+  var resetBtn = document.getElementById("resetBtn");
+
+  function syncSlidersFromSettings() {
+    bloomSlider.value = SETTINGS.bloomAlpha;
+    abSlider.value = SETTINGS.aberrationOffset;
+    eraseSlider.value = SETTINGS.eraseAlpha;
+    bloomVal.textContent = Number(SETTINGS.bloomAlpha).toFixed(2);
+    abVal.textContent = Number(SETTINGS.aberrationOffset).toFixed(1);
+    eraseVal.textContent = Number(SETTINGS.eraseAlpha).toFixed(2);
+  }
+  syncSlidersFromSettings();
+
+  toggleBtn.addEventListener("click", function () {
+    panel.classList.toggle("open");
+  });
+
+  bloomSlider.addEventListener("input", function () {
+    SETTINGS.bloomAlpha = parseFloat(bloomSlider.value);
+    bloomVal.textContent = SETTINGS.bloomAlpha.toFixed(2);
+  });
+  abSlider.addEventListener("input", function () {
+    SETTINGS.aberrationOffset = parseFloat(abSlider.value);
+    abVal.textContent = SETTINGS.aberrationOffset.toFixed(1);
+  });
+  eraseSlider.addEventListener("input", function () {
+    SETTINGS.eraseAlpha = parseFloat(eraseSlider.value);
+    eraseVal.textContent = SETTINGS.eraseAlpha.toFixed(2);
+  });
+
+  resetBtn.addEventListener("click", function () {
+    SETTINGS.bloomAlpha = DEFAULT_SETTINGS.bloomAlpha;
+    SETTINGS.aberrationOffset = DEFAULT_SETTINGS.aberrationOffset;
+    SETTINGS.eraseAlpha = DEFAULT_SETTINGS.eraseAlpha;
+    syncSlidersFromSettings();
+  });
+
+  exportBtn.addEventListener("click", function () {
+    // bake current slider positions into the static "value" attribute
+    // so the exported file opens with these same settings.
+    bloomSlider.setAttribute("value", String(SETTINGS.bloomAlpha));
+    abSlider.setAttribute("value", String(SETTINGS.aberrationOffset));
+    eraseSlider.setAttribute("value", String(SETTINGS.eraseAlpha));
+    panel.classList.remove("open");
+
+    var htmlStr = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+    var newSettingsLiteral = "/*SETTINGS_START*/" + JSON.stringify({
+      bloomAlpha: SETTINGS.bloomAlpha,
+      aberrationOffset: SETTINGS.aberrationOffset,
+      eraseAlpha: SETTINGS.eraseAlpha
+    }) + "/*SETTINGS_END*/";
+    htmlStr = htmlStr.replace(/\/\*SETTINGS_START\*\/[\s\S]*?\/\*SETTINGS_END\*\//, newSettingsLiteral);
+
+    var blob = new Blob([htmlStr], { type: "text/html" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "kra-long-canvas-export.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
 })();
 </script>
 </body>
