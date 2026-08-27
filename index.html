@@ -385,10 +385,12 @@
       var scale = 1.4 - Math.min(dist / (cw * 0.48), 1) * 0.7;
       var im = imgEls[i];
       if (!im || !im.complete || im.naturalWidth === 0) continue;
-      var baseW = cw < 768 ? 280 : 360;
       var aspect = (im.naturalHeight / im.naturalWidth) || 1;
-      var dw = baseW * scale;
-      var dh = baseW * aspect * scale;
+      // size off canvas height so the centered image's height fits the
+      // screen (scale peaks at 1.4 at dist=0, so baseH*1.4 === ch there)
+      var baseH = ch / 1.4;
+      var dh = baseH * scale;
+      var dw = dh / aspect;
       ctx.drawImage(im, x - dw / 2, ch * 0.5 - dh / 2, dw, dh);
     }
 
