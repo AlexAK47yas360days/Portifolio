@@ -203,6 +203,9 @@
         <label>Erase pattern <span class="val" id="eraseVal">1.00</span></label>
         <input type="range" id="eraseSlider" min="0" max="1" step="0.01" value="1">
 
+        <label>Pattern scale <span class="val" id="patternScaleVal">0.85</span></label>
+        <input type="range" id="patternScaleSlider" min="0.2" max="3" step="0.05" value="0.85">
+
         <button id="exportBtn">Export HTML</button>
         <button id="resetBtn">Reset to defaults</button>
       </div>
@@ -214,11 +217,11 @@
   "use strict";
 
   var BG_COLOR = "#9e8859";
-  var MASK_OPACITY = 0.85;
   var SETTINGS = /*SETTINGS_START*/{
     "bloomAlpha": 0.51,
     "aberrationOffset": 3,
-    "eraseAlpha": 1
+    "eraseAlpha": 1,
+    "patternScale": 0.85
   }/*SETTINGS_END*/;
   var TEXTURE_DATA_URI = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepSKOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAABxjcHJ0AAABDAAAAAx3dHB0AAABGAAAABRyWFlaAAABLAAAABRnWFlaAAABQAAAABRiWFlaAAABVAAAABRyVFJDAAABaAAAAGBnVFJDAAABaAAAAGBiVFJDAAABaAAAAGBkZXNjAAAAAAAAAAV1UkdCAAAAAAAAAAAAAAAAdGV4dAAAAABDQzAAWFlaIAAAAAAAAPNUAAEAAAABFslYWVogAAAAAAAAb6AAADjyAAADj1hZWiAAAAAAAABilgAAt4kAABjaWFlaIAAAAAAAACSgAAAPhQAAtsRjdXJ2AAAAAAAAACoAAAB8APgBnAJ1A4MEyQZOCBIKGAxiDvQRzxT2GGocLiBDJKwpai5+M+s5sz/WRldNNlR2XBdkHWyGdVZ+jYgskjacq6eMstu+mcrH12Xkd/H5////2wBDAAkGBwgHBgkICAgKCgkLDhcPDg0NDhwUFREXIh4jIyEeICAlKjUtJScyKCAgLj8vMjc5PDw8JC1CRkE6RjU7PDn/2wBDAQoKCg4MDhsPDxs5JiAmOTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTk5OTn/wAARCAAUABQDASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMEB//EACgQAAICAgEDAgYDAAAAAAAAAAECAxEEBRIABhMiQRUhMTJRcSMlof/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwDo080DYvcIHcsxJlA+SknHJPEIgWmbkwMX8ZUkoVWpQ7nXFPjvu9Vw7iebliWkIKFcoEWshKgLbBWYULPjJTiqyhmRHtHxN8nwfXv5mqJDTDKUoFJdTQc8QBTFLPoJVVEra/7JtxgSSa/CEQxnE04k5PE54lkRiAStqvt6qJPAoqyBPtWSKTXSGHcPtV87nzPVi6IH6IIcH7SHBQKhRQ6voRmrhSDOwsXDlM8jCPHa1ILFi37JJN/VvuIQsUV0EJe28KSDawmXK47Nucty8qNewNgj8hgwK0htFVBddLirscPOEmUZcSAwRhp2YFT7sSSSfzZ9R4luRRCrp0FNPqoNRivj47zOjStKTLIXNsb9/wDT9WNsxZmZi6dOg//Z";
 
@@ -235,6 +238,7 @@
   var images = [];      // {src}
   var imgEls = [];       // HTMLImageElement per image
   var maskCanvas = null;
+  var abRedCanvas = null, abCyanCanvas = null;
 
   var canvasW = 1200, canvasH = 800;
   var itemWidth = 740;
@@ -261,7 +265,7 @@
     var tex = new Image();
     tex.src = TEXTURE_DATA_URI;
     tex.onload = function () {
-      var g = Math.max(8, Math.round(20 * MASK_OPACITY));
+      var g = Math.max(8, Math.round(20 * SETTINGS.patternScale));
       var tmp = document.createElement("canvas");
       tmp.width = g; tmp.height = g;
       var tctx = tmp.getContext("2d");
@@ -414,13 +418,43 @@
       ctx.globalAlpha = SETTINGS.bloomAlpha;
       ctx.drawImage(copy, 0, 0);
       ctx.restore();
-      ctx.save();
-      ctx.globalAlpha = 0.38;
-      ctx.globalCompositeOperation = "screen";
       var abOffset = SETTINGS.aberrationOffset;
-      ctx.drawImage(copy, -abOffset, 0);
-      ctx.drawImage(copy, abOffset, 0);
-      ctx.restore();
+      if (abOffset > 0) {
+        if (!abRedCanvas) {
+          abRedCanvas = document.createElement("canvas");
+          abCyanCanvas = document.createElement("canvas");
+        }
+        if (abRedCanvas.width !== cw || abRedCanvas.height !== ch) {
+          abRedCanvas.width = abCyanCanvas.width = cw;
+          abRedCanvas.height = abCyanCanvas.height = ch;
+        }
+        // isolate the red channel (drop green/blue) and the cyan channel
+        // (green+blue, drop red) via a multiply blend, then offset each
+        // in opposite directions and screen them back together — that's
+        // what actually produces the red/cyan color fringing.
+        var rctx = abRedCanvas.getContext("2d");
+        rctx.globalCompositeOperation = "source-over";
+        rctx.clearRect(0, 0, cw, ch);
+        rctx.drawImage(copy, 0, 0);
+        rctx.globalCompositeOperation = "multiply";
+        rctx.fillStyle = "#ff0000";
+        rctx.fillRect(0, 0, cw, ch);
+
+        var cctx2 = abCyanCanvas.getContext("2d");
+        cctx2.globalCompositeOperation = "source-over";
+        cctx2.clearRect(0, 0, cw, ch);
+        cctx2.drawImage(copy, 0, 0);
+        cctx2.globalCompositeOperation = "multiply";
+        cctx2.fillStyle = "#00ffff";
+        cctx2.fillRect(0, 0, cw, ch);
+
+        ctx.save();
+        ctx.globalAlpha = 0.65;
+        ctx.globalCompositeOperation = "screen";
+        ctx.drawImage(abRedCanvas, -abOffset, 0);
+        ctx.drawImage(abCyanCanvas, abOffset, 0);
+        ctx.restore();
+      }
     } catch (err) {}
 
     rafId = requestAnimationFrame(frame);
@@ -508,16 +542,18 @@
 
   // ---- settings panel (bloom / chromatic aberration / erase pattern) ----
 
-  var DEFAULT_SETTINGS = { bloomAlpha: 0.51, aberrationOffset: 3, eraseAlpha: 1 };
+  var DEFAULT_SETTINGS = { bloomAlpha: 0.51, aberrationOffset: 3, eraseAlpha: 1, patternScale: 0.85 };
 
   var toggleBtn = document.getElementById("settingsToggle");
   var panel = document.getElementById("settingsPanel");
   var bloomSlider = document.getElementById("bloomSlider");
   var abSlider = document.getElementById("abSlider");
   var eraseSlider = document.getElementById("eraseSlider");
+  var patternScaleSlider = document.getElementById("patternScaleSlider");
   var bloomVal = document.getElementById("bloomVal");
   var abVal = document.getElementById("abVal");
   var eraseVal = document.getElementById("eraseVal");
+  var patternScaleVal = document.getElementById("patternScaleVal");
   var exportBtn = document.getElementById("exportBtn");
   var resetBtn = document.getElementById("resetBtn");
 
@@ -525,9 +561,11 @@
     bloomSlider.value = SETTINGS.bloomAlpha;
     abSlider.value = SETTINGS.aberrationOffset;
     eraseSlider.value = SETTINGS.eraseAlpha;
+    patternScaleSlider.value = SETTINGS.patternScale;
     bloomVal.textContent = Number(SETTINGS.bloomAlpha).toFixed(2);
     abVal.textContent = Number(SETTINGS.aberrationOffset).toFixed(1);
     eraseVal.textContent = Number(SETTINGS.eraseAlpha).toFixed(2);
+    patternScaleVal.textContent = Number(SETTINGS.patternScale).toFixed(2);
   }
   syncSlidersFromSettings();
 
@@ -547,12 +585,19 @@
     SETTINGS.eraseAlpha = parseFloat(eraseSlider.value);
     eraseVal.textContent = SETTINGS.eraseAlpha.toFixed(2);
   });
+  patternScaleSlider.addEventListener("input", function () {
+    SETTINGS.patternScale = parseFloat(patternScaleSlider.value);
+    patternScaleVal.textContent = SETTINGS.patternScale.toFixed(2);
+    buildMask();
+  });
 
   resetBtn.addEventListener("click", function () {
     SETTINGS.bloomAlpha = DEFAULT_SETTINGS.bloomAlpha;
     SETTINGS.aberrationOffset = DEFAULT_SETTINGS.aberrationOffset;
     SETTINGS.eraseAlpha = DEFAULT_SETTINGS.eraseAlpha;
+    SETTINGS.patternScale = DEFAULT_SETTINGS.patternScale;
     syncSlidersFromSettings();
+    buildMask();
   });
 
   exportBtn.addEventListener("click", function () {
@@ -561,13 +606,15 @@
     bloomSlider.setAttribute("value", String(SETTINGS.bloomAlpha));
     abSlider.setAttribute("value", String(SETTINGS.aberrationOffset));
     eraseSlider.setAttribute("value", String(SETTINGS.eraseAlpha));
+    patternScaleSlider.setAttribute("value", String(SETTINGS.patternScale));
     panel.classList.remove("open");
 
     var htmlStr = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
     var newSettingsLiteral = "/*SETTINGS_START*/" + JSON.stringify({
       bloomAlpha: SETTINGS.bloomAlpha,
       aberrationOffset: SETTINGS.aberrationOffset,
-      eraseAlpha: SETTINGS.eraseAlpha
+      eraseAlpha: SETTINGS.eraseAlpha,
+      patternScale: SETTINGS.patternScale
     }) + "/*SETTINGS_END*/";
     htmlStr = htmlStr.replace(/\/\*SETTINGS_START\*\/[\s\S]*?\/\*SETTINGS_END\*\//, newSettingsLiteral);
 
